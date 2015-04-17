@@ -27,7 +27,7 @@ namespace CryptoChatService.Controllers
                 return Json("Error", JsonRequestBehavior.AllowGet);
 
             var bf = new BinaryFormatter();
-            using (var stream = System.IO.File.OpenWrite(path + "key.txt"))
+            using (var stream = System.IO.File.Open(path + "key.txt", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
             {
                 RSAParameters rsaParams = (RSAParameters)bf.Deserialize(stream);
                 var rsa = new RSACryptoServiceProvider();
@@ -52,15 +52,23 @@ namespace CryptoChatService.Controllers
                 if (System.IO.File.Exists(path + groupId + ".txt"))
                     using (var stream = System.IO.File.Open(path + groupId + ".txt", FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
                     {
-                        stream.Write(Encoding.Unicode.GetBytes(ip), 0, ip.Length);
+                        Dictionary<string, string> maps = (Dictionary<string, string>)bf.Deserialize(stream);
+                        if (maps[myFbID] != null)
+                        {
+                            maps[myFbID] = ip;
+                            stream.Seek(0, SeekOrigin.Begin);
+                            bf.Serialize(stream, maps);
+                        }
+                        return Json(maps, JsonRequestBehavior.AllowGet);
                     }
                 else
                     using (var stream = System.IO.File.Open(path + groupId + ".txt", FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
                     {
-                        
-                        stream.Write(Encoding.Unicode.GetBytes(ip), 0, ip.Length);
+                        Dictionary<string, string> maps = new Dictionary<string, string>();
+                        maps[myFbID] = ip;
+                        bf.Serialize(stream, maps);
+                        return Json(maps, JsonRequestBehavior.AllowGet);
                     }
-                return Json("Error", JsonRequestBehavior.AllowGet);
             }
             else
                 return Json("Error", JsonRequestBehavior.AllowGet);
