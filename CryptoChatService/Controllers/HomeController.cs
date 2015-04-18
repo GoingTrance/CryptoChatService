@@ -19,9 +19,11 @@ namespace CryptoChatService.Controllers
             return GetPublicKeyRSA();
         }
 
-        public JsonResult Connect(string accessToken, string groupId, string ip)
+        public JsonResult Connect(string accessTokenJson, string groupId, string ip)
         {
-            string path = Server.MapPath("~");
+            List<string> accessToken = JsonConvert.DeserializeObject<List<string>>(accessTokenJson);
+
+            string path = Server.MapPath("~"), accessTokenString = "";
 
             if (!System.IO.File.Exists(path + "key.txt") || accessToken == null || groupId == null || ip == null)
                 return Json("Error", JsonRequestBehavior.AllowGet);
@@ -32,11 +34,15 @@ namespace CryptoChatService.Controllers
                 RSAParameters rsaParams = (RSAParameters)bf.Deserialize(stream);
                 var rsa = new RSACryptoServiceProvider();
                 rsa.ImportParameters(rsaParams);
-                accessToken = Encoding.Unicode.GetString(rsa.Decrypt(Encoding.Unicode.GetBytes(accessToken), true));
+                for (int i = 0; i < accessToken.Count; i++)
+                {
+                    string accessTokenPart = Encoding.Unicode.GetString(rsa.Decrypt(Encoding.Unicode.GetBytes(accessToken[i]), true));
+                    accessTokenString += accessTokenPart;
+                }
             }
 
             bool inGroup = false;
-            var fb = new FacebookClient(accessToken);
+            var fb = new FacebookClient(accessTokenString);
             var result = fb.Get("me") as IDictionary<string, object>;
             var myFbID = result["id"].ToString();
 
