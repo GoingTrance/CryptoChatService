@@ -168,14 +168,24 @@ namespace CryptoChatService.Controllers
                 }
         }
 
-        public void DeleteGroup(int groupId)
+        public JsonResult DeleteGroup(int groupId)
         {
-            string serverPath = Server.MapPath("~");
-
-            if (System.IO.File.Exists(serverPath + groupId + ".txt"))
+            try
             {
-                System.IO.File.Delete(serverPath + groupId + ".txt");
-            }            
+                string serverPath = Server.MapPath("~");
+
+                if (System.IO.File.Exists(serverPath + groupId + ".txt"))
+                {
+                    System.IO.File.Delete(serverPath + groupId + ".txt");
+                }
+
+                return Json("OK");
+            }
+            catch(Exception e)
+            {
+                return Json(e.Message);
+            }
+                     
         }
     }
 }
