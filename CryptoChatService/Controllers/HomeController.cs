@@ -167,5 +167,15 @@ namespace CryptoChatService.Controllers
                     return Json(MyRSAProvider.RSAWrapper.ExportParameters(false), JsonRequestBehavior.AllowGet);
                 }
         }
+
+        public void DeleteGroup(int groupId)
+        {
+            string serverPath = Server.MapPath("~");
+
+            if (System.IO.File.Exists(serverPath + groupId + ".txt"))
+            {
+                System.IO.File.Delete(serverPath + groupId + ".txt");
+            }            
+        }
     }
 }
