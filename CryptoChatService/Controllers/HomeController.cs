@@ -168,7 +168,7 @@ namespace CryptoChatService.Controllers
                 }
         }
 
-        public JsonResult DeleteGroup(int groupId)
+        public JsonResult DeleteGroup(string groupId)
         {
             try
             {
@@ -179,13 +179,12 @@ namespace CryptoChatService.Controllers
                     System.IO.File.Delete(serverPath + groupId + ".txt");
                 }
 
-                return Json("OK");
+                return Json("OK", JsonRequestBehavior.AllowGet);
             }
             catch(Exception e)
             {
-                return Json(e.Message);
-            }
-                     
+                return Json(e.Message, JsonRequestBehavior.AllowGet);
+            }                     
         }
     }
 }
