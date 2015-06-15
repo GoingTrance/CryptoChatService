@@ -11,17 +11,17 @@ using System.Web.Mvc;
 
 namespace CryptoChatService.Controllers
 {
-    public static class myrsa
+    public static class MyRSAProvider
     {
-        public static RSACryptoServiceProvider rsa;
-        static myrsa()
+        public static RSACryptoServiceProvider RSAWrapper;
+        static MyRSAProvider()
         {
-            rsa = new RSACryptoServiceProvider();
+            RSAWrapper = new RSACryptoServiceProvider();
         }        
     }
 
     [Serializable]
-    public struct RSAParameters2
+    public struct SerializableRSAParameters
     {
         public byte[] D;
         public byte[] DP;
@@ -35,6 +35,8 @@ namespace CryptoChatService.Controllers
 
     public class HomeController : Controller
     {
+        public const string keyPath = "key.txt";
+
         public JsonResult Index()
         {
             return GetPublicKeyRSA();
@@ -44,43 +46,46 @@ namespace CryptoChatService.Controllers
         public void Connect()
         {
             Stream inputStream = Request.InputStream;
-            var bf = new BinaryFormatter();
+            var binFormatter = new BinaryFormatter();
 
-            byte[] accessTokenBytes128 = (byte[])bf.Deserialize(inputStream);
-            string groupId = (string)bf.Deserialize(inputStream);
-            string ip = (string)bf.Deserialize(inputStream);
+            byte[] accessTokenBytes128 = (byte[])binFormatter.Deserialize(inputStream);
+            string groupId = (string)binFormatter.Deserialize(inputStream);
+            string ip = (string)binFormatter.Deserialize(inputStream);
 
-            string path = Server.MapPath("~"), accessTokenString = "";
+            string serverPath = Server.MapPath("~"), accessTokenString = "";
 
-            if (!System.IO.File.Exists(path + "key.txt") || accessTokenBytes128 == null || groupId == null || ip == null)
+            if (!System.IO.File.Exists(serverPath + keyPath) || accessTokenBytes128 == null || groupId == null || ip == null)
                 return;
 
-            using (var stream = System.IO.File.Open(path + "key.txt", FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
+            using (var stream = System.IO.File.Open(serverPath + keyPath, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite))
             {
-                RSAParameters2 rsaParam2 = (RSAParameters2)bf.Deserialize(stream);
-                RSAParameters rsaParam = new RSAParameters();
-                rsaParam.D = rsaParam2.D;
-                rsaParam.DP = rsaParam2.DP;
-                rsaParam.DQ = rsaParam2.DQ;
-                rsaParam.Exponent = rsaParam2.Exponent;
-                rsaParam.InverseQ = rsaParam2.InverseQ;
-                rsaParam.Modulus = rsaParam2.Modulus;
-                rsaParam.P = rsaParam2.P;
-                rsaParam.Q = rsaParam2.Q;
+                var myRSAParams = (SerializableRSAParameters)binFormatter.Deserialize(stream);
 
-                myrsa.rsa.ImportParameters(rsaParam);
+                var rsaParams = new RSAParameters();
+                rsaParams.D = myRSAParams.D;
+                rsaParams.DP = myRSAParams.DP;
+                rsaParams.DQ = myRSAParams.DQ;
+                rsaParams.Exponent = myRSAParams.Exponent;
+                rsaParams.InverseQ = myRSAParams.InverseQ;
+                rsaParams.Modulus = myRSAParams.Modulus;
+                rsaParams.P = myRSAParams.P;
+                rsaParams.Q = myRSAParams.Q;
 
-                for (int i = 0; i < accessTokenBytes128.Length / 128; i++)
-                {
-                    byte[] encryptedPart = new byte[128];
-                    for (int y = 0; y < 128; y++)
-                        encryptedPart[y] = accessTokenBytes128[i*128 + y];
-
-                    string accessTokenPart = Encoding.ASCII.GetString(myrsa.rsa.Decrypt(encryptedPart, true));
-                    accessTokenString += accessTokenPart;
-                }
+                MyRSAProvider.RSAWrapper.ImportParameters(rsaParams);                
             }
 
+            // AT decrypt by parts
+            for (int i = 0; i < accessTokenBytes128.Length / 128; i++)
+            {
+                byte[] encryptedPart = new byte[128];
+                for (int y = 0; y < 128; y++)
+                    encryptedPart[y] = accessTokenBytes128[i * 128 + y];
+
+                string accessTokenPart = Encoding.ASCII.GetString(MyRSAProvider.RSAWrapper.Decrypt(encryptedPart, true));
+                accessTokenString += accessTokenPart;
+            }
+
+            // Check if member is in fb group
             bool inGroup = false;
             var fb = new FacebookClient(accessTokenString);
             var result = fb.Get("me") as IDictionary<string, object>;
@@ -97,67 +102,69 @@ namespace CryptoChatService.Controllers
             {
                 Stream outStream = Response.OutputStream;
 
-                if (System.IO.File.Exists(path + groupId + ".txt"))
-                    using (var stream = System.IO.File.Open(path + groupId + ".txt", FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
+                if (System.IO.File.Exists(serverPath + groupId + ".txt"))
+                    using (var stream = System.IO.File.Open(serverPath + groupId + ".txt", FileMode.Open, FileAccess.ReadWrite, FileShare.ReadWrite))
                     {
-                        Dictionary<string, string> maps = (Dictionary<string, string>)bf.Deserialize(stream);
+                        Dictionary<string, string> maps = (Dictionary<string, string>)binFormatter.Deserialize(stream);
                         if (maps.ContainsKey(myFbID))
                             maps[myFbID] = ip;
                         else
                             maps.Add(myFbID, ip);
                         stream.Seek(0, SeekOrigin.Begin);
-                        bf.Serialize(stream, maps);
-                        bf.Serialize(outStream, maps);
+                        binFormatter.Serialize(stream, maps);
+                        binFormatter.Serialize(outStream, maps);
                     }
                 else
-                    using (var stream = System.IO.File.Open(path + groupId + ".txt", FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
+                    using (var stream = System.IO.File.Open(serverPath + groupId + ".txt", FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
                     {
                         Dictionary<string, string> maps = new Dictionary<string, string>();
                         maps.Add(myFbID, ip);
-                        bf.Serialize(stream, maps);
-                        bf.Serialize(outStream, maps);
+                        binFormatter.Serialize(stream, maps);
+                        binFormatter.Serialize(outStream, maps);
                     }
             }            
         }
 
         public JsonResult GetPublicKeyRSA()
         {
-            var bf = new BinaryFormatter();
+            var binFormatter = new BinaryFormatter();
             string path = Server.MapPath("~");
 
-            if (System.IO.File.Exists(path + "key.txt"))
-                using (var stream = System.IO.File.Open(path + "key.txt", FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+            if (System.IO.File.Exists(path + keyPath))
+                using (var stream = System.IO.File.Open(path + keyPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
                 {
-                    RSAParameters2 rsaParam2 = (RSAParameters2)bf.Deserialize(stream);
-                    RSAParameters rsaParam = new RSAParameters();
-                    rsaParam.D = rsaParam2.D;
-                    rsaParam.DP = rsaParam2.DP;
-                    rsaParam.DQ = rsaParam2.DQ;
-                    rsaParam.Exponent = rsaParam2.Exponent;
-                    rsaParam.InverseQ = rsaParam2.InverseQ;
-                    rsaParam.Modulus = rsaParam2.Modulus;
-                    rsaParam.P = rsaParam2.P;
-                    rsaParam.Q = rsaParam2.Q;
-                    myrsa.rsa.ImportParameters(rsaParam);
+                    SerializableRSAParameters myRSAParams = (SerializableRSAParameters)binFormatter.Deserialize(stream);
 
-                    return Json(myrsa.rsa.ExportParameters(false), JsonRequestBehavior.AllowGet);
+                    var RSAParams = new RSAParameters();
+                    RSAParams.D = myRSAParams.D;
+                    RSAParams.DP = myRSAParams.DP;
+                    RSAParams.DQ = myRSAParams.DQ;
+                    RSAParams.Exponent = myRSAParams.Exponent;
+                    RSAParams.InverseQ = myRSAParams.InverseQ;
+                    RSAParams.Modulus = myRSAParams.Modulus;
+                    RSAParams.P = myRSAParams.P;
+                    RSAParams.Q = myRSAParams.Q;
+                    MyRSAProvider.RSAWrapper.ImportParameters(RSAParams);
+
+                    return Json(MyRSAProvider.RSAWrapper.ExportParameters(false), JsonRequestBehavior.AllowGet);
                 }
             else
-                using (var stream = System.IO.File.Open(path + "key.txt", FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
+                using (var stream = System.IO.File.Open(path + keyPath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.ReadWrite))
                 {
-                    RSAParameters rsaParam = myrsa.rsa.ExportParameters(true);
-                    RSAParameters2 rsaParam2 = new RSAParameters2();
-                    rsaParam2.D = rsaParam.D;
-                    rsaParam2.DP = rsaParam.DP;
-                    rsaParam2.DQ = rsaParam.DQ;
-                    rsaParam2.Exponent = rsaParam.Exponent;
-                    rsaParam2.InverseQ = rsaParam.InverseQ;
-                    rsaParam2.Modulus = rsaParam.Modulus;
-                    rsaParam2.P = rsaParam.P;
-                    rsaParam2.Q = rsaParam.Q;
-                    bf.Serialize(stream, rsaParam2);
+                    RSAParameters RSAParams = MyRSAProvider.RSAWrapper.ExportParameters(true);
 
-                    return Json(myrsa.rsa.ExportParameters(false), JsonRequestBehavior.AllowGet);
+                    var myRSAParams = new SerializableRSAParameters();
+                    myRSAParams.D = RSAParams.D;
+                    myRSAParams.DP = RSAParams.DP;
+                    myRSAParams.DQ = RSAParams.DQ;
+                    myRSAParams.Exponent = RSAParams.Exponent;
+                    myRSAParams.InverseQ = RSAParams.InverseQ;
+                    myRSAParams.Modulus = RSAParams.Modulus;
+                    myRSAParams.P = RSAParams.P;
+                    myRSAParams.Q = RSAParams.Q;
+                    binFormatter.Serialize(stream, myRSAParams);
+
+                    return Json(MyRSAProvider.RSAWrapper.ExportParameters(false), JsonRequestBehavior.AllowGet);
                 }
         }
     }
