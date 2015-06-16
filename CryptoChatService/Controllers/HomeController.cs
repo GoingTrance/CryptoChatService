@@ -33,6 +33,7 @@ namespace CryptoChatService.Controllers
         public byte[] Q;
     }
 
+    [OutputCacheAttribute(VaryByParam = "*", Duration = 0, NoStore = true)]
     public class HomeController : Controller
     {
         public const string keyPath = "key.txt";
